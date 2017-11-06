@@ -1,4 +1,4 @@
-//Android提供了AsyncTask，使得异步任务实现起来更加简单，代码更简洁。
+// Android提供了AsyncTask，使得异步任务实现起来更加简单，代码更简洁。
 
 /*
 	首先来看AsyncTask定义：
@@ -18,7 +18,7 @@ public abstract class AsyncTask<Params, Progress, Result> {
 	onPostExecute(Result result)：在主线程中执行。当后台任务执行完成后，它会被执行。doInBackground方法得到的结果就是返回的result的值。此方法一般做任务执行后的收尾工作，比如更新UI和数据。
 */
 
-//AsyncTask源码分析
+// AsyncTask源码分析
 
 /*
 	Android3.0版本之前的AsyncTask的部分源码
@@ -45,7 +45,7 @@ public abstract class AsyncTask<Params, Progress, Result> {
 	Android7.0版本的AsyncTask
 */
 
-//首先看AsyncTask的构造方法
+// 首先看AsyncTask的构造方法
 public AsyncTask() {
 	mWorker = new WorkerRunnable<Params, Result> { //1
 		public Result call() throws Exception {
@@ -73,12 +73,12 @@ public AsyncTask() {
 	};
 }
 
-//AsyncTask的execute方法
+// AsyncTask的execute方法
 public final AsyncTask<Params, Progress, Result> execute(Params... params) {
 	return executeOnExecutor(sDefaultExecutor, params);
 }
 
-//executeOnExecutor方法
+// executeOnExecutor方法
 public final AsyncTask<Params, Progress, Result> executeOnExecutor(Executor exec, Params... params) {
 	if (mStatus != Status.PENDING) {
 		switch (mStatus) {
@@ -95,15 +95,15 @@ public final AsyncTask<Params, Progress, Result> executeOnExecutor(Executor exec
 	return this;
 }
 
-//SerialExecutor代码
+// SerialExecutor代码
 private static class SerialExecutor implements Executor {
 	final ArrayDeque<Runnable> mTasks = new ArrayDeque<Runnable>();
 	Runnable mActive;
 	public synchronized void execute(final Runnable r) {
-		mTask.offer(new Runnable() { //1
+		mTask.offer(new Runnable() { //1 当调用SerialExecutor的execute方法时，会将FutureTask加入到mTask中
 			public void run() {
 				try {
-					r.run(); //2
+					r.run(); //2 最终会调用WorkerRunnable的call方法，call方法最终会调用postResult方法将结果投递出去
 				} finally {
 					scheduleNext();
 				}
@@ -119,6 +119,96 @@ private static class SerialExecutor implements Executor {
 		}
 	}
 }
+
+// postResult方法代码如下所示：
+// 在postResult方法中会创建Message，将结果赋值给这个Message，通过getHandler方法得到Handler，并通过这个Handler发送消息。
+private Result postResult(Result result) {
+	@SuppressWarnings("unchecked")
+	Message message = getHandler().obtainMessage(MESSAGE_POST_RESULT, new AsyncTaskResult<Result>(this, result));
+	message.sendToTarget();
+	return result;
+}
+
+// getHandler方法如下所示：
+private static Handler getHandler() {
+	synchronized (AsyncTask.class) {
+		if (sHandler == null) {
+			sHandler = new InternalHandler();
+		}
+		return sHandler;
+	}
+}
+
+// 在getHandler方法中创建了InternalHandler，InternalHandler的定义如下所示：
+private static class InternalHandler extends Handler {
+	public InternalHandler() {
+		super(Looper.getMainLooper());
+	}
+	
+	@SuppressWarnings({"unchecked", "RawUseOfParameterizedType"})
+	@Override
+	public void handleMessage(Message msg) {
+		AsyncTaskResult<?> result = (AsyncTaskResult<?>) msg.obj;
+		switch (msg.what) {
+			case MESSAGE_POST_RESULT:
+				// There is only one result
+				result.mTask.finish(result.mData[0]);
+				break;
+			case MESSAGE_POST_PROGRESS:
+				result.mTask.onProgressUpdate(result.mData);
+				break;
+		}
+	}
+}
+
+// 在接收到MESSAGE_POST_RESULT消息后会调用AsyncTask的finish方法，代码如下所示：
+private void finish(Result result) {
+	if (isCancelled()) {
+		onCancelled(result);
+	} else {
+		onPostExecute(result);
+	}
+	mStatus = Status.FINISHED;
+}
+
+// 接着回头来看SerialExecutor，线程池SerialExecutor主要用来处理排队，将任务串行处理。
+private static final int CPU_COUNT = Runtime.getRuntime().availabelProcessors();
+private static final int CORE_POOL_SIZE = Math.max(2, Math.min(CPU_COUNT - 1, 4));
+private static final int MAXIMUM_POOL_SIZE = CPU_COUNT * 2 + 1;
+private static final int KEEP_ALIVE_SECONDS = 30;
+private static final BlockintQueue<Runnable> sPoolWorkQueue =  new LinkedBlockingDeque<Runnable>(128);
+public static final Executor THREAD_POOL_EXECUTOR;
+static {
+	ThreadPoolExecutor threadPoolExecutor = new threadPoolExecutor (CORE_POOL_SIZE, MAXIMUM_POOL_SIZE, KEEP_ALIVE_SECONDS, TimeUnit.SECONDS, sPoolWorkQueue, sThreadFactory);
+	threadPoolExecutor.allowCoreThreadTimeOut(true);
+	THREAD_POOL_EXECUTOR = threadPoolExecutor;
+}
+
+// 如果想要在Android3.0及以上版本使用并行的线程处理，可以使用如下的代码：
+asyncTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, "");
+
+// asyncTask是我们自定义的AsyncTask，也可以传入其他4中线程池，如CachedThreadPool
+asyncTask.executeOnExecutor(Executors.newCachedThreadPool(), "");
+
+// 还可以传入自定义的线程池，如下所示：
+Executor exec = new ThreadPoolExecutor(0, Integer.MAX_VALUE, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>());
+asyncTask.executeOnExecutor(exec, "");
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
