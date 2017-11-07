@@ -32,3 +32,47 @@ private HttpClient createHttpClient() {
 }
 
 //接下来创建HttpGet和HttpClient，请求网络并得到HttpResponse，并对HttpResponse进行处理：
+private void useHttpClientGet(String url) {
+	HttpGet mHttpGet = new HttpGet(url);
+	mHttpGet.addHeader("Connection", "Keep-Alive");
+	try {
+		HttpClient mHttpClient = createHttpClient();
+		HttpResponse mHttpResponse = mHttpClient.execute(mHttpGet);
+		HttpEntity mHttpEntity = mHttpResponse.getEntity();
+		int code = mHttpResponse.getStatusLine().getStatusCode();
+		if (null != mHttpEntity) {
+			InputStream mInputStream = mHttpEntity.getContent();
+			String response = converStreamToString(mInputStream); // 1
+			Log.d(TAG, "请求状态码：" + code + "\n请求结果：\n" + response);
+			mInputStream.close();
+		}
+	} catch (IOException e) {
+		e.printStackTrace();
+	}
+}
+
+// 上面代码注释1处的converStreamToString方法将请求结果转换成String类型
+private String converStreamToString(InputStream is) throws IOException {
+	BufferedReader reader = new BufferedReader(new InputStreamReader(is));
+	StringBuffer sb = new StringBuffer();
+	String line = null;
+	while ((line = reader.readLine()) != null) {
+		sb.append(line + "\n");
+	}
+	String response = sb.toString();
+	return response;
+}
+
+// 最后我们开启线程访问百度。
+new Thread(new Runnable() {
+	@Override
+	public void run() {
+		useHttpClientGet("http://www.baidu.com");
+	}
+}).start();
+
+
+
+
+
+
