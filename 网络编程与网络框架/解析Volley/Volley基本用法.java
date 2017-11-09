@@ -98,6 +98,64 @@ JsonObjectRequest mJsonObjectRequest = new JsonObjectRequest(Request.Method.POST
 mQueue.add(mJsonObjectRequest);
 // 最终Log打印的结果是“北京”，很显然通过淘宝IP库查询59.108.54.37这个IP地址所在的地理位置为北京。
 
+// 使用ImageRequest加载图片
+RequestQueue mQueue = Volley.newRequestQueue(getApplicationContext());
+ImageRequest imageRequest = new ImageRequest("http://img.my.csdn.net/uploads/201603/26/1458988468_5804.jpg", 
+						new Response.Listener<Bitmap>() {
+							@Override
+							public void onResponse(Bitmap response) {
+								iv_image.setImageBitmap(response);
+							}
+						}, 0, 0, Bitmap.Config.RGB_565, 
+						new Response.ErrorListener() {
+							@Override
+							public void onErrorResponse(VolleyError error) {
+								iv_image.setImageResource(R.drawable.icon_default);
+							}
+						});
+						mQueue.add(imageRequest);
+
+// 查看ImageRequest的源码发现，它可以设置你想要的图片的最大宽度和高度。在加载图片时，如果图片超过期望的最大宽度和高度，则会进行压缩：
+public ImageRequest(String url, Listener<Bitmap> listener, int maxWidth, int maxHeight, ScaleType scaleType, Config decodeConfig, ErrorListener errorListener) {
+	super(0, url, errorListener);
+	this.setRetryPolicy(new DefaultRetryPolicy(1000, 2, 2.0F));
+	this.mListener = listener;
+	this.mDecodeConfig = decodeConfig;
+	this.mMaxWidth = maxWidth;
+	this.mMaxHeight = maxHeight;
+	this.mScaleType = scaleType;
+}
+
+// 使用ImageLoader加载图片
+RequestQueue mQueue = Volley.newRequestQueue(getApplicationContext());
+ImageLoader imageLoader = new ImageLoader(mQueue, new BitmapCache());
+ImageLoader.ImageLisener listener = ImageLoader.getImageListener(iv_image, R.drawable, ico_default, R.drawable. ico_default);
+imageLoader.get("http://img.my.csdn.net/uploads/201603/26/1458988468_5804.jpg", listener);
+
+// ImageLoader也提供了设置最大宽度和高度的方法，如下所示：
+public ImageLoader.ImageContainer get(String requestUrl, ImageLoader.ImageListener imageListener, int maxWidth, int maxHeight) {
+	return this.get(requestUrl, imageListener, maxWidth, maxHeight, ScaleType.CENTER_INSIDE);
+}
+
+// 使用NetworkImageView加载图片
+// NetworkImageView是一个自定义控件，继承自ImageView, 其封装了请求网络加载图片的功能，先在布局中引用：
+<com.android.volley.toolbox.NetworkImageView
+	android:id="@+id/iv_image"
+	android:layout_width="200dp"
+	android:layout_height="200dp"
+	android:layout_centerHorizontal="true"
+	android:layout_below="@id/iv_image"
+	android:layout_marginTop="20dp">
+</com.android.volley.toolbox.NetworkImageView>
+
+// 接着在代码中调用，其和ImageLoader用法类似，如下所示：
+iv_image = (ImageView) this.findViewById(R.id.iv_image);
+RequestQueue mQueue = Volley.newRequestQueue(getApplicationContext());
+ImageLoader imageLoader = new ImageLoader(mQueue, new BitmapCache());
+nv_image.setDefaultImageResId(R.drawable.ico_default);
+nv_image.setErrorImageResId(R.drawable.ico_default);
+nv_image.setImageUrl("http://img.my.csdn.net/uploads/201603/26/1458988468_5804.jpg", imageLoader);
+
 
 
 
