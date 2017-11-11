@@ -269,12 +269,83 @@ private static boolean validate(Response cached, Response network) {
 }
 
 //失败重连
+// 最后我们再回到RealCall的getResponse方法，如下所示：
+Response getResponse(Request request, boolean forWebSocket) throws IOException {
+	...
+	boolean releaseConnection = true;
+	try {
+		engine.sendRequest();
+		engine.readResponse();
+		releaseConnection = false;
+	} catch (RequestException e) {
+		throw e.getCause();
+	} catch (RouteException e) {
+		HttpEngine retryEngine = engine.recover(e.getLastConnectException(), null); // 1
+		if (retryEngine != null) {
+			releaseConnection = false;
+			engine = retryEngine;
+			continue;
+		}
+		throw e.getLastConnectException();
+	} catch (IOException e) {
+		HttpEngine retryEngine = engine.recover(e, null); // 2
+		if (retryEngine != null) {
+			releaseConnection = false;
+			engine = retryEngine;
+			continue;
+		}
+		throw e;
+	} finally {
+		if (releaseConnection) {
+			StreamAllocation streamAllocation = engine.close();
+			streamAllocation.release();
+		}
+	}
+	...
+	engine = new HttpEngine(client, request, false, false, forWebSocket, streamAllocation, null, response);
+}
 
+// 在上面代码注释1和注释2处，当发生IOException或者RouteException时都会执行HttpEngine的recover方法，它的代码如下所示：
+public HttpEngine recover(IOException e, Sink requestBodyOut) {
+	if (!streamAllocation.recover(e, requestBodyOut)) {
+		return null;
+	}
+	if (!client.retryOnConnectionFailure()) {
+		return null;
+	}
+	StreamAllocation streamAllocation = close();
+	return new HttpEngine(client, userRequest, bufferRequestBody, callerWritesRequestBody, forWebSocket, streamAllocation, (RetryableSink)requestBodyOut, priorResponse);
+}
+// 通过最后一行可以看到，其就是重新创建了HttpEngine并返回，用来完成重连。到这里OkHttp请求网络的流程基本上讲完了。
 
+// OkHttp的复用连接池
 
+/*
+	TCP有3次握手与4次挥手。
+	为了解决TCP握手与挥手的效率问题，HTTP有一种叫做keepalive connections的机制；
+	而OkHttp支持5个并发socket连接，默认keepAlive时间为5分钟。接下来我们学习OkHttp是怎么复用连接的。
+*/
 
+/*
+	主要变量与构造方法：
+	连接池的类位于okhttp3.ConnectionPool，它的主要变量如下所示：
+*/
+private static final Executor executor = new ThreadPoolExecutor(0, Integer.MAX_VALUE, 60L, TimeUnit.SECONDS, new SynchronousQueue<Runnable>(), Util.threadFactory("OkHttpConnectionPool", true));
+// 空闲的socket最大连接数
+private final int maxIdleConnections;
+// socket的keepAlive时间
+private final long keepAliveDurationNs;
+private final Deque<RealConnection> connections = new ArrayDeque<>();
+final RouteDatabase routeDatabase = new RouteDatabase();
+boolean cleanupRunning;
+/*
+	主要的变量有必要说明一下：
+	executor线程池，类似于CachedThreadPool, 需要注意的是这种线程池的工作队列采用了没有容量的SynchronousQueue。
+	Deque，双向队列，双端队列同时具有队列和栈性质，经常在缓存中被使用，里面维护了RealConnection也就是socket物理连接的包装。
+	RouteDatabase，它用来记录连接失败的路线名单，当连接失败的时候就会把失败的线路加进去。
+*/
 
-
+//	ConnectionPool的构造方法如下所示：
 
 
 
