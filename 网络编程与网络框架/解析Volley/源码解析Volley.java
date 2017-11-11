@@ -180,7 +180,105 @@ public void run() {
 	}
 }
 
+/* 
+	网络调度线程也是从队列中取出请求并且判断该请求是否被取消了。
+	如果该请求没被取消，就去请求网络得到响应并回调给主线程。
+	请求网络时调用this.mNetwork.performRequest(request),这个mNetwork是一个接口，实现它的类是BasicNetwork。
+	接下来查看BasicNetwork的perfromRequest()方法：
+*/
+public NetworkResponse performRequest(Request<?> request) throws VolleyError {
+	long requestStart = SystemClock.elapsedRealtime();
+	while (true) {
+		HttpResponse httpResponse = null;
+		Object responseContents = null;
+		Map responseHeaders = Collections.emptyMap();
+		try {
+			HashMap e = new HashMap();
+			this.addCacheHeaders(e, request.getCacheEntry());
+			httpResponse = this.mHttpStack.performRequest(request, e); // 1
+			StatusLine statusCode1 = httpResponse.getStatusLine();
+			int networkResponse1 = statusCode1.getStatusCode();
+			responseHeaders = convertHeaders(httpResponse.getAllHeaders());
+			if (netwrkResponse1 == 304) {
+				Entry requestLifetime2 = request.getCacheEntry();
+				if (requestLifetime2 == null) {
+					return new NetworkResponse(304, (byte[])null, responseHeaders, true, SystemClock.elapsedRealtime() - requestStart);
+				}
+				requestLifetime2.responseHeaders.putAll(responseHeaders);
+				return new NetworkResponse(304, requestLifetime2.data, requestLifetime2.responseHeaders, true, SystemClock.elapsedRealtime() - requestStart);
+			}
+			...
+		}
+	}
+}
+/*
+	上面代码注释1处调用HttpStack的performRequest方法请求网络，接下来根据不同的状态码来返回不同的NetworkResponse。另外HttpStack也是一个接口，实现它的两个类是HurlStack和HttpClientStack。
+	我们在回到NetworkDispather，请求网络后，会将响应结果存在缓存中，并调用this.mDelivery.postResponse(request, volleyError1)来回调给主线程。
+	查看Delivery的postResponse方法，如下所示：
+*/
+public void postResponse(Request<?> request, Request<?> response, Runnable runnable) {
+	request.markDelivered();
+	request.addMarker("post-response");
+	this.mResponsePoster.execute(new ExecutorDelivery.ResponseDeliveryRunnable(request, response, runnable));
+}
 
+// 查看ResponseDeliveryRunnable里面做了什么：
+private class ResponseDeliveryRunnable implements Runnable {
+	private final Request mRequest;
+	private final Response mResponse;
+	private final Runnable mRunnable;
+	public ResponseDeliveryRunnable(Request request, Response response, Runnable runnable) {
+		this.mRequest = request;
+		this.mResponse = response;
+		this.mRunnable = runnable;
+	}
+	public void run() {
+		if (this.mRequest.isCanceled()) {
+			this.mRequest.finish("canceled-at-delivery");
+		} else {
+			if (this.mResponse.isSuccess()) {
+				this.mRequest.deliveryResponse(this.mResponse.result); // 1
+			} else {
+				this.mRequest.deliveryError(this.mResponse.error);
+			}
+			...
+		}
+	}
+}
+// 上面代码注释1处调用了Request的deliverResponse方法，假设这里我们使用的是StringRequest，它继承自Request，因此查看StringRequest的源码：
+public class StringRequest extends Request<String> {
+	private final Listener<String> mListener;
+	public StringRequest(int method, String url, Listener<String> listener, ErrorListener errorListener) {
+		super (method, url, errorListener);
+		this.mListener = listener;
+	}
+	public StringRequest(String url, Listenr<String> listener, ErrorListener errorListener) {
+		this(0, url, listener, errorListener);
+	}
+	protected void deliverResponse(String response) {
+		this.mListener.onResponse(response);
+	}
+	...
+}
+
+// 在deliverResponse方法中调用了this.mListener.onResponse(response)， 最终将response回调给了Response.Listener的onResponse()方法。
+// 我们用StringRequest请求网络的写法是这样的：
+RequestQueue mQueue = Volley.newRequestQueue(getApplicationContext());
+StringRequest mStringRequest = new StringRequest(Request.Method.GET, "http://www.baidu.com",
+							new Response.Listener<String>() {
+								@Override
+								public void onResponse(String response) { // 1
+									Log.i("wangshu", response);
+								}, 
+							new Response.ErrorListener() {
+								@Override
+								public void onErrorResponse(VolleyError error) {
+									Log.e("wangshu", error.getMessage(), error);
+								}
+							});
+// 将请求添加到请求队列中
+mQueue.add(mStringRequest);
+// 上面代码注释1处将请求网络得到的response通过Response.Listener的onResponse方法回调回来，这样整个Volley的大致流程就走通了。
 
 
 
