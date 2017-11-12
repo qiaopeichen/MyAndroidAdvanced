@@ -104,10 +104,19 @@ call.enqueue(new Callback<IpModel>() {
 */
 public interface IpServiceForQuery {
 	@GET("getIpInfo.php")
-	Call<IpModel> getIpMsg(@Query("ip")String ip);
+	Call<IpModel> getIpMsg(@Query("ip") String ip);
 }
 // 请求网络时，只需要传入想要查询的ip值就可以了
 
+/*
+	动态指定查询条件组：@QueryMap
+	在网络请求中一般为了更精确地查找到我们所需要的数据，需要传入很多查询参数。
+	如果用@Query会比较麻烦，这时我们可以采用@QueryMap，将所有的参数集成在一个Map中统一传递，如下所示：
+*/
+public interface IpServiceForQueryMap {
+	@GET("getIpInfo.php") 
+	Call<IpModel> getIpMsg(@QueryMap Map<String, String> options);
+}
 
 
 
