@@ -118,8 +118,124 @@ public interface IpServiceForQueryMap {
 	Call<IpModel> getIpMsg(@QueryMap Map<String, String> options);
 }
 
+/*
+	POST请求访问网络
+	传输数据类型为键值对：@Field
+	传输数据类型为键值对，这是我们最常用的POST请求数据类型，淘宝IP库支持数据类型为键值对的POST请求。请求网络接口的代码如下所示：
+*/
+public interface IpServiceForPost {
+	@FormUrlEncoded
+	@POST("getIpInfo.php")
+	Call<IpModel> getIpMsg(@Field("ip") String first);
+}
+/*
+	首先用@FormUrlEncoded注解来标明这是一个表单请求，然后在getIpMsg方法中使用@Field注解来标识所对应的String类型数据的键，从而组成一组键值对进行传递。
+	请求网络的代码如下所示：
+*/
+String url = "http://ip.taobao.com/service";
+Retrofit retrofit = new Retrofit.Builder()
+				.baseUrl(url)
+				.addConverterFactory(GsonConverterFactory.create())
+				.build();
+IpServiceForPost ipService = retrofit.create(IpServiceForPost.class);
+Call<IpModel> call = ipService.getIpMsg("59.108.54.37");
+call.enqueue(new Callback<IpModel>() {
+	@Override
+	public void onResponse(Call<IpModel> call, Response<IpModel> response) {
+		String country = response.body().getData().getCountry();
+		Toast.makeText(getApplicationContext(), country, Toast.LENGTH_SHORT).show();
+	}
+	@Override
+	public void onFailure(Call<IpModel> call, Throwable t) {
+	}
+});
+// 传输数据类型JSON字符串：@Body
+/*
+	我们也可以用POST方式将JSON字符串作为请求体发送到服务器，请求网络接口的代码如下所示：
+*/
+public interface IpServiceForPostBody {
+	@POST("getIpInfo.php")
+	Call<IpModel> getIpMsg(@Body Ip ip);
+}
+/*
+	用@Body这个注解标识参数对象即可，Retrofit会将Ip对象转换成字符串：
+*/
+public class Ip {
+	private String ip;
+	public Ip(String ip) {
+		this.ip = ip;
+	}
+}
+/*
+	请求网络的代码基本上是一致的：
+*/
+...
+IpServiceForPostBody ipService = retrofit.create(IpServiceForPostBody.class);
+Call<IpModel> call = ipService.getIpMsg(new Ip(ip));
+...
+
+/*
+	单个文件上传：@Part
+*/
+public interface UploadFileForPart {
+	@Multipart
+	@POST("user/photo")
+	Call<User> updateUser(@Part MultipartBody.Part photo, @Part("description") RequestBody description);
+}
+/*
+	Multipart注解标识允许多个@Part。updateUser方法的第一个参数是准备上传的图片文件，使用了MultipartBody.Part类型；
+	另一个参数是RequestBody类型，它用来传递简单的键值对。
+	请求网络代码如下所示：
+*/
+...
+File file = new File(Environment.getExternalStorageDirectory(), "wangshu.png");
+RequestBody photoRequestBody = RequestBody.create(MediaType.parse("image/png"), file);
+MultipartBody.Part photo = MultipartBody.Part.createFormData("photos", "wangshu.png", photoRequestBody);
+UploadFileForPart uploadFile = retrofit.create(UploadFileForPart.class);
+Call<User> call = uploadFile.updateUser(photo, RequestBody.create(null, "wangshu"));
+...
+
+/*
+	多个文件上传：@PartMap
+*/
+@Multipart
+POST("user/photo")
+Call<User> updateUser(@PartMap Map<String, RequestBody> photos, @Part("description") RequestBody description);
+/*
+	这和单文件上传是类似的，只是使用Map封装了上传的文件，并用@PartMap注解来标示起来，其他的和单文件上传都一样。
+*/
 
 
+/*
+	消息报头Header
+	在HTTP请求中，为了防止共计或过滤掉不安全的访问，或者添加特殊加密的访问等，以便减轻服务器的压力和保证请求的安全，
+	通常都会在消息报头中携带一些特殊的消息头处理。
+	Retrofit也提供了@Header来添加消息报头。
+	添加消息报头有两种方式：一种是静态的，另一种是动态的。
+	先来看静态的方式：
+*/
+interface SomeService {
+	@GET("some/endpoint")
+	@Headers("Accept-Encoding:application/json")
+	Call<ResponseBody> getCarType();
+}
+/*
+	@Headers注解添加消息报头。如果要添加多个消息报头，则可以使用{}包含起来：
+*/
+interface SomeService {
+	@GET("some/endpoint")
+	@Headers({
+		"Accept-Encoding:application/json",
+		"User-Agent:MoonRetrofit"
+	})
+	Call<ResponseBody> getCarType();
+}
+// 以动态的方式添加报头如下所示：
+interface SomeService {
+	@GET("some/endpoint")
+	Call<ResponseBody> getCarType(@Header("Location") String location);
+}
+// 使用@Header注解，可以通过调用getCarType方法来动态地添加消息报头。
 
 
 
