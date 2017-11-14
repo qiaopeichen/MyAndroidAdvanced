@@ -61,8 +61,22 @@ public Retrofit build() {
 	List<Converter.Factory> converterFactories = new ArrayList<>(this.converterFactories); // 6
 	return new Retrofit(callFactory, baseUrl, converterFactories, adapterFactories, callbackExecutor, validateEagerly);
 }
-
-
+/*
+	从上面代码注释1处可以看出baseUrl是必须制定的。
+	在注释2处，callFactory默认为this.callFactory。
+	this.callFactory就是我们在构建Retrofit时调用callFactory方法锁传进来的，如下所示：
+*/
+public Builder callFactory(okhttp3.Call.Factory factory) {
+	this.callFactory = checkNotNull(factory, "factory == null");
+	return this;
+}
+/*
+	因此，如果需要对OkHttpClient进行设置，则可以构建OkHttpClient对象，然后调用callFactory方法将设置好的OkHttpClient传进去。
+	在注释3处，如果没有设置callFactory，则直接创建OkHttpClient。注释4处的callbackExecutor用来将回调传递到UI线程。
+	注释5处的adapterFactories主要用于存储对Call进行转化的对象，后面也会提及。
+	此前在例子中调用的addConverterFactory(GsonConverterFactory.create())，就是设置返回的数据支持转换为Gson对象。
+	其最终会返回配置好的Retrofit类。
+*/
 
 
 
