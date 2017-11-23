@@ -182,8 +182,185 @@ private void subscribe(Object subscriber, SubscriberMethod subscriberMethod) {
 			Set<Map.Entry<Class<?>, Object>> entries = stickyEvents.entrySet();
 			for (Map.Entry<Class<?>, Object> entry : entries) {
 				Class<?> candidateEventType = entry.getKey();
-				//TODO 待解决
+				if (eventType.isAssignableFrom(candidate)) {
+					Object stickyEvents = entry.getValue();
+					checkPostStickyEventToSubscription(new Subscription, stickyEvent);
+				}
+			}
+		} else {
+			Object stickyEvent = stickyEvents.get(eventType);
+			checkPostStickyEventToSubscription(new Subscription, stickyEvent);
+		}
+	}
+}
+/*
+	首先，上面代码注释 1 处会根据 subscriber（订阅者）和 subscriberMethod（订阅方法）创建一个 Subscription（订阅对象）。
+	注释 2 处根据 eventType（事件类型）获取 Subscriptions（订阅对象集合）。如果 Subscriptions 为 null 则重新创建，并将 Subscriptions 根据eventType保存在 subscriptionsByEventType（Map集合）。
+	注释 3 处按照订阅方法的优先级插入到订阅对象集合中，完成订阅方法的注册。
+	注释 4 处通过 subscriber 获取 subscribedEvents（事件类型集合）。如果 subscribedEvents 为 null 则重新创建，并将 eventType 添加到 subscribedEvents 中，并根据 subscriber 将 subscribedEvents 存储在 typesBySubscriber（Map集合）。
+	如果是黏性事件，则从 stickyEvents 事件保存队列中取出该事件类型的事件发送给当前订阅者。
+	总结一下，subscribe 方法主要就是做了两件事：一件事是将 Subscriptions 根据 eventType 封装到 subscriptionsByEventType 中，将 subscribedEvents 根据 subscriber 封装到 typesBySubscriber 中；
+	第二件事就是对黏性事件的处理。
+*/
+
+/*
+	3.事件的发送
+	在获取 EventBus 对象以后，可以通过 post 方法来进行对事件的提交。post 方法的源码如下：
+*/
+public void post(Objcet event) {
+	// PostingThreadState 保存着事件队列和线程状态信息
+	PostingThreadState postingState = currentPostingThreadState.get();
+	// 获取事件队列，并将当前事件插入事件队列
+	List<Object> eventQueue = postingState.eventQueue;
+	eventQueue.add(event);
+	if (!postingState.isPosting) {
+		postingState.isMainThread = Looper.getMainLooper() == Looper.myLooper();
+		postingState.isPosting = true;
+		if (postingState.canceled) {
+			throw new EventBusException("Internal error.Abort state was not reset");
+		}
+		try {
+			// 处理队列中的所有事件
+			while (!eventQueue.isEmpty()) {
+				postSingleEvent(eventQueue.remove(0), postingState);
+			} 
+		} finally {
+			postingState.isPosting = false;
+			postingState.isMainThread = false;
+		}
+	}
+}
+
+/*
+	首先从 PostingThreadState 对象中取出事件队列，然后再将当前的事件插入事件队列。最后将队列中的事件依次交由 postSingleEvent 方法进行处理，并移除该事件。
+	之后查看 postSingleEvent 方法里做了什么：
+*/
+private void postSingleEvent(Object event, PostingThreadState postingState) throws Error {
+	Class<?> eventClass = event.getClass();
+	boolean subscriptionFound = false;
+	// eventInheritance 表示是否向上查找事件的父类，默认为true
+	if (eventInheritance) {
+		List<Class<?>> eventTypes = lookupAllEventTypes(eventClass);
+		int countTypes = eventTypes.size();
+		for (int h = 0; h < countTypes.size(); h++) {
+			Class<?> clazz = eventTypes.get(h);
+			subscriptionFound |= postSingleEventForEventType(event, postingState, clazz);
+		}
+	} else {
+		subscriptionFound = postSingleEventForEventType(event, postingState, eventClass);
+	}
+	// 找不到该事件时的异常处理
+	if (!subscriptionFound) {
+		if (logNoSubscriberMessage) {
+			Log.d(TAG, "No subscribers registered for event " + eventClass);
+		}
+		if (sendNoSubscriberEvent && eventClass != NoSubscriberEvent.class && eventClass != SubscriberExceptionEvent.class) {
+			post(new NoSubscriberEvent(this, event));
+		}
+	}
+}
+
+/*
+	eventInheritance 表示是否向上查找事件的父类，它的默认值为true，可以通过在 EventBusBuilder 中进行配置。当 eventInheritance 为true 时，则通过 lookupAllEventTypes 找到所有的父类事件并存在 List 中，
+	然后通过 postSingleEventForEventType 方法对事件逐一处理。postSingleEventForEventType 方法的源码如下所示：
+*/
+private boolean postSingleEventForEventType(Object event, PostingThreadState postingState, Class<?> && eventClass) {
+	CopyOnWriteArrayList<Subscription> subscriptions;
+	synchronized (this) {
+		subscriptions = subscriptionsByEventType.get(eventClass); // 1
+	}
+	if (subscriptions != null && !subscriptions.isEmpty()) {
+		for (Subscription subscription : subscriptions) { // 2
+			postingState.event = event;
+			postingState.subscription = subscription;
+			boolean aborted = false;
+		}
+		try {
+			postToSubscription(subscription, event, postingState.isMainThread);
+			aborted = postingState.canceled;
+		} finally {
+			postingState.event = null;
+			postingState.subscription = null;
+			postingState.canceled = false;
+		}
+		if (aborted) {
+			break;
+		}
+		return true;
+	}
+	return false;
+}
+
+/*
+	上面代码注释 1 处同步取出该事件对应的 Subscriptions（订阅对象集合）。注释 2 处遍历 Subscriptions，将事件 event 和对应的 Subscription（订阅对象）传递给 postingState 并调用 postToSubscription 方法对事件进行处理。
+	接下来查看 postToSubscription 方法：
+*/
+private void postToSubscription(Subscription subscription, Object event, boolean isMainThread) {
+	switch (subscription.subscriberMethod.threadMode) {
+		case POSTING:
+			invokeSubscriber(subscription, event);
+			break;
+		case MAIN:
+			if (isMainThread) {
+				invokeSubscriber(subscription, event);
+			} else {
+				mainThreadPoster.enqueue(subscription, event);
+			}
+			break;
+		case BACKGROUND:
+			if (isMainThread) {
+				backgroundPoster.enqueue(subscription, event);
+			} else {
+				invokeSubscriber(subscription, event);
+			}
+			break;
+		case ASYNC:
+			asyncPoster.enqueue(subscription, event);
+			break;
+		default:
+			throw new IllegalStateException("Unknown thread mode: " + subscription.subscriberMethod.threadMode);
+	}
+}
+/*
+	取出订阅方法的 threadMode（线程模式），之后根据 threadMode 来分别处理。如果 threadMode 是 MAIN，若提交事件的线程是主线程，则通过反射直接运行订阅的方法；
+	若其不是主线程，则需要 mainThreadPoster 将我们的订阅事件添加到主线程队列中。 mainThreadPoster 是 HandlePoster 类型的，继承自 Handler，通过 Handler 将订阅方法切换到主线程执行。
+*/
+
+/*
+	4.订阅者取消注册
+	取消注册则需要调用 unregister 方法，如下所示：
+*/
+public synchronized void unregister(Object subscriber) {
+	List<Class<?>> subscribedTypes = typesBySubscriber.get(subscriber); // 1
+	if (subscribedTypes != null) {
+		for (Class<?> eventType : subscribedTypes) {
+			unsubscribeByEventType(subscriber, eventType); // 2
+		}
+		typesBySubscriber.remove(subscriber); // 3
+	} else {
+		Log.w(TAG, "Subscriber to unregister was not registered before:" + subscriber.getClass());
+	}
+}
+/*
+	我们在订阅者注册的过程中讲到过 typesBySubscriber，它是一个 map 集合。上面代码注释 1 处通过 subscriber 找到 subscribedTypes（事件类型集合）。
+	注释 3 处将 subscriber 对应的 eventType 从 typesBySubscriber 中移除。注释 2 处遍历 subscribedTypes，并调用 unsubscribeByEventType 方法：
+*/
+private void unsubscribeByEventType(Object subscriber, Class<?> eventType) {
+	List<Subscription> subscriptions = subscriptionsByEventType.get(eventType); // 1
+	if (subscriptions != null) {
+		int size = subscriptions.size();
+		for (int i = 0; i < size; i++) {
+			Subscription subscription = subscriptions.get(i);
+			if (subscription.subscriber == subscriber) {
+				subscription.active = false;
+				subscriptions.remove(i);
+				i--;
+				size--;
 			}
 		}
 	}
 }
+/*
+	上面代码注释 1 处通过 eventType 来得到对应的 Subscriptions（订阅对象集合），并在 for 循环中判断如果 Subscriptions（订阅对象）的 subscriber（订阅者）属性等于传进来的 subscriber，
+	则从 Subscriptions 中移除该 Subscription。EventBus的源码就讲到这里了。
+*/
