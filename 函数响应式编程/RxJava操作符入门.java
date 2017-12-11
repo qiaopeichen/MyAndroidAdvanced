@@ -192,3 +192,135 @@ Observable.concat(GroupedObservable).subscribe(new Action1<Swordsman>() {
 宋远桥---S
 鹤笔翁---S
 
+/*
+	过滤操作符
+	过滤操作符用于过滤和选择 Observable 发射的数据序列，让 Observable 只返回满足我们条件的数据。
+	过滤操作符有 filter/elementAt/distinct/skip/take/skipLast/takeLast/ignoreElements/throttleFirst/sample/debounce和throttleWithTimeout等。
+*/
+
+// 1.filter
+// filter操作符是对源 Observable 产生的结果自定义规则进行过滤，只有满足条件的结果才会提交给订阅者，如下所示：
+Observable.just(1, 2, 3, 4).filter(new Func1<Integer, Boolean>() {
+    @Override
+    public Boolean call(Integer integer) {
+        return integer > 2; // 1
+    }
+}).subscribe(new Action1<Integer>() {
+    @Override
+    public void call(Integer integer) {
+        Log.d(TAG, "filter:" + integer);
+    }
+});
+
+// 上面代码注释 1 处设定大于 2 的数字会被返回并提交给订阅者。
+// 输出结果为：
+12-11 21:20:11.175 15386-15386/com.example.qiaopc.myapplication D/MainActivity: filter:3
+12-11 21:20:11.175 15386-15386/com.example.qiaopc.myapplication D/MainActivity: filter:4
+
+// 2.elementAt
+// elementAt 操作符用来返回指定位置的数据。和它类似的有 elementAtOrDefault(int, T)，其可以允许默认值。具体代码如下所示：
+Observable.just(1, 2, 3, 4).elementAt(2).subscribe(new Action1<Integer>() {
+    @Override
+    public void call(Integer integer) {
+        Log.d(TAG, "elementAt:" + integer);
+    }
+});
+
+// 输出结果为：
+12-11 21:26:44.217 19386-19386/com.example.qiaopc.myapplication D/MainActivity: elementAt:3
+
+// 3.distinct
+// distinct 操作符用来去重，其只允许还没有发射过的数据项通过。和它类似的还有 distinctUntilChanged 操作符，它用来去掉连续重复的数据。
+Observable.just(1, 2, 2, 3, 4, 1).distinct().subscribe(new Action1<Integer>() {
+    @Override
+    public void call(Integer integer) {
+        Log.d(TAG, "distinct:" + integer);
+    }
+});
+
+// 输出结果为：
+12-11 21:32:33.845 22944-22944/com.example.qiaopc.myapplication D/MainActivity: distinct:1
+12-11 21:32:33.845 22944-22944/com.example.qiaopc.myapplication D/MainActivity: distinct:2
+12-11 21:32:33.845 22944-22944/com.example.qiaopc.myapplication D/MainActivity: distinct:3
+12-11 21:32:33.845 22944-22944/com.example.qiaopc.myapplication D/MainActivity: distinct:4
+
+// 4.skip 操作符将源 Observable 发射的数据过滤掉前 n 项；而 take 操作符则只取前 n 项；另外还有 skipLast 和 takeLast 操作符，则是从后面进行过滤操作。先来看 skip 操作符，如下所示：
+Observable.just(1, 2, 3, 4, 5, 6).skip(2).subscribe(new Action1<Integer>() {
+    @Override
+    public void call(Integer integer) {
+        Log.d(TAG, "skip:" + integer);
+    }
+});
+
+// 输出结果为：
+12-11 21:46:34.108 31013-31013/? D/MainActivity: skip:3
+12-11 21:46:34.108 31013-31013/? D/MainActivity: skip:4
+12-11 21:46:34.108 31013-31013/? D/MainActivity: skip:5
+12-11 21:46:34.108 31013-31013/? D/MainActivity: skip:6
+
+// 接下来查看 take 操作符，如下所示：
+Observable.just(1, 2, 3, 4, 5, 6).take(2).subscribe(new Action1<Integer>() {
+    @Override
+    public void call(Integer integer) {
+        Log.d(TAG, "take:" + integer);
+    }
+});
+
+// 输出结果为：
+12-11 21:49:44.926 952-952/com.example.qiaopc.myapplication D/MainActivity: take:1
+12-11 21:49:44.926 952-952/com.example.qiaopc.myapplication D/MainActivity: take:2
+
+// 5.ignoreElements
+// ignoreElements操作符忽略所有源 Observable  产生的结果，只把 Observable 的 onCompleted 和 onError 事件通知给订阅者。具体如下所示：
+Observable.just(1, 2, 3, 4).ignoreElements().subscribe(new Observer<Integer>() {
+    @Override
+    public void onCompleted() {
+        Log.d(TAG, "onCompleted");
+    }
+
+    @Override
+    public void onError(Throwable e) {
+        Log.d(TAG, "onError");
+    }
+
+    @Override
+    public void onNext(Integer integer) {
+        Log.d(TAG, "onNext");
+    }
+});
+
+// 输出结果为：
+12-11 21:53:35.709 4460-4460/? D/MainActivity: onCompleted
+
+// 6.throttleFirst
+/*
+	throttleFirst 操作符则会定期发射这个时间段里源 Observable 发射的第一个数据，throttleFirst 操作符默认在 computation 调度器上执行（关于调度器后面会讲到）。
+	和 throttleFirst 操作符类似的有 sample 操作符，它会定时地发射源 Observable 最近发射的数据，其他的都会被过滤掉。
+	throttleFirst 操作符的使用示例如下所示：
+*/
+Observable.create(new Observable.OnSubscribe<Integer>() {
+    @Override
+    public void call(Subscriber<? super  Integer> subscriber) {
+        for (int i = 0; i < 10; i++) {
+            subscriber.onNext(i);
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+        subscriber.onCompleted();
+    }
+}).throttleFirst(200, TimeUnit.MILLISECONDS).subscribe(new Action1<Integer>() {
+    @Override
+    public void call(Integer integer) {
+        Log.d(TAG, "throttleFirst:" + integer);
+    }
+});
+
+// 每隔 100ms 发射一个数据。throttleFirst 操作符设定的时间为 200ms，因此，它会发射每个200ms的第一个数据，输出结果为：
+12-11 22:32:02.553 25728-25728/? D/MainActivity: throttleFirst:0
+12-11 22:32:02.754 25728-25728/? D/MainActivity: throttleFirst:2
+12-11 22:32:02.954 25728-25728/? D/MainActivity: throttleFirst:4
+12-11 22:32:03.155 25728-25728/? D/MainActivity: throttleFirst:6
+12-11 22:32:03.356 25728-25728/? D/MainActivity: throttleFirst:8
