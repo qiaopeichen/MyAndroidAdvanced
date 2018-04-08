@@ -14,7 +14,7 @@ import cn.finalteam.okhttpfinal.RequestParams;
  * 同时在OkHttpFinal的回调函数中调用自己定义的回调函数LoadTasksCallBack
  */
 
-public class IpInfoTask implements NetTask {
+public class IpInfoTask implements NetTask<String> {
     private static IpInfoTask INSTANCE = null;
     private static final String HOST = "http://ip.taobao.com/service/getIpInfo.php";
     private LoadTasksCallBack loadTasksCallBack;
@@ -60,4 +60,6 @@ public class IpInfoTask implements NetTask {
             }
         });
     }
+
+
 }

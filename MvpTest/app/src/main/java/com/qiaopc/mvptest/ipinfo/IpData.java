@@ -13,8 +13,6 @@ class IpData {
     private String region_id;
     private String city;
     private String city_id;
-    private String country;
-    private String country_id;
     private String isp;
     private String isp_id;
     private String ip;
